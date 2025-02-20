@@ -1,0 +1,225 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: affine
+  namespace: affine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: affine
+  template:
+    metadata:
+      labels:
+        app: affine
+    spec:
+      containers:
+        - name: affine
+          image: ghcr.io/toeverything/affine-graphql:stable
+          ports:
+            - containerPort: 3010
+          volumeMounts:
+            - name: upload-storage
+              mountPath: /root/.affine/storage
+            - name: config-storage
+              mountPath: /root/.affine/config
+          env:
+            - name: REDIS_SERVER_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: affine-config
+                  key: REDIS_SERVER_HOST
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/affine"
+          resources:
+            limits:
+              cpu: "500m"
+            requests:
+              cpu: "250m"      
+      volumes:
+        - name: upload-storage
+          persistentVolumeClaim:
+            claimName: affine-upload-pvc
+        - name: config-storage
+          persistentVolumeClaim:
+            claimName: affine-config-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: affine
+  namespace: affine
+spec:
+  selector:
+    app: affine
+  ports:
+    - protocol: TCP
+      port: 3010
+      targetPort: 3010
+      nodePort: 30010  # Choose a port between 30000-32767
+  type: NodePort
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: affine-migration
+  namespace: affine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: affine-migration
+  template:
+    metadata:
+      labels:
+        app: affine-migration
+    spec:
+      containers:
+        - name: affine-migration
+          image: ghcr.io/toeverything/affine-graphql:stable
+          command: ['sh', '-c', 'node ./scripts/self-host-predeploy.js']
+          env:
+            - name: REDIS_SERVER_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: affine-config
+                  key: REDIS_SERVER_HOST
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/affine"
+          resources:
+            limits:
+              cpu: "500m"
+            requests:
+              cpu: "250m"      
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: affine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis
+          ports:
+            - containerPort: 6379
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "--raw", "incr", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: "500m"
+            requests:
+              cpu: "250m"  
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: affine
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: affine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: "affine"
+          resources:
+            limits:
+              cpu: "1000m"
+            requests:
+              cpu: "500m"    
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: affine
+spec:
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  type: ClusterIP
