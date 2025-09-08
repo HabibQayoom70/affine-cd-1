@@ -13,7 +13,7 @@ on:
         type: choice
         options:
           - staging
-          - Production
+          - production
 
 env:
   AZURE_REGISTRY: aiosregistry-akfrawasefd6djbz.azurecr.io
@@ -71,7 +71,14 @@ jobs:
         # Show the updated file
         echo "Updated deployment.yml:"
         cat deployment.yml
-
+    - name: Commit updated deployment file
+      run: |
+        cd ${{ env.FOLDER_PATH }}
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add deployment.yml
+        git commit -m "Update ${{ github.event.inputs.environment }} deployment to version ${{ github.event.inputs.version }}" || echo "No changes to commit"
+        git push || echo "No changes to push"
     # - name: Azure Login
     #   run: |
     #     az login --service-principal \
@@ -120,11 +127,4 @@ jobs:
     #     # Check if the deployment is ready
     #     kubectl get deployment platform -n ${{ env.NAMESPACE }}
 
-    - name: Commit updated deployment file
-      run: |
-        cd ${{ env.FOLDER_PATH }}
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add deployment.yml
-        git commit -m "Update ${{ github.event.inputs.environment }} deployment to version ${{ github.event.inputs.version }}" || echo "No changes to commit"
-        git push || echo "No changes to push"
+   
