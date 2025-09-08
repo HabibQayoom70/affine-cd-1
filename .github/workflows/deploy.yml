@@ -1,0 +1,130 @@
+name: Deploy to Kubernetes
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image version to deploy'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  AZURE_REGISTRY: aiosregistry-akfrawasefd6djbz.azurecr.io
+  IMAGE_NAME: aios-backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set environment variables
+      run: |
+        if [ "${{ github.event.inputs.environment }}" = "staging" ]; then
+          echo "NAMESPACE=ai-os-staging" >> $GITHUB_ENV
+          echo "FOLDER_PATH=staging" >> $GITHUB_ENV
+          echo "SECRET_NAME=staging-env" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=${{ secrets.AKS_STAGING_CLUSTER_NAME }}" >> $GITHUB_ENV
+          echo "RESOURCE_GROUP=${{ secrets.AKS_STAGING_RESOURCE_GROUP }}" >> $GITHUB_ENV
+        else
+          echo "NAMESPACE=ai-os-production" >> $GITHUB_ENV
+          echo "FOLDER_PATH=production" >> $GITHUB_ENV
+          echo "SECRET_NAME=production-env" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=${{ secrets.AKS_PRODUCTION_CLUSTER_NAME }}" >> $GITHUB_ENV
+          echo "RESOURCE_GROUP=${{ secrets.AKS_PRODUCTION_RESOURCE_GROUP }}" >> $GITHUB_ENV
+        fi
+
+    - name: Install Azure CLI
+      uses: azure/CLI@v1
+      with:
+        azcliversion: 2.30.0
+        inlineScript: echo "Azure CLI installed"
+        
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Update deployment file
+      run: |
+        cd ${{ env.FOLDER_PATH }}
+        
+        # Update the image version in deployment.yml
+        sed -i "s|image: ${{ env.AZURE_REGISTRY }}/${{ env.IMAGE_NAME }}:.*|image: ${{ env.AZURE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version }}|g" deployment.yml
+        
+        # Update namespace if needed
+        sed -i "s|namespace: .*|namespace: ${{ env.NAMESPACE }}|g" deployment.yml
+        
+        # Update secret name if needed
+        sed -i "s|name: .*-env|name: ${{ env.SECRET_NAME }}|g" deployment.yml
+        
+        # Show the updated file
+        echo "Updated deployment.yml:"
+        cat deployment.yml
+
+    # - name: Azure Login
+    #   run: |
+    #     az login --service-principal \
+    #       -u ${{ secrets.AZURE_CLIENT_ID }} \
+    #       -p ${{ secrets.AZURE_CLIENT_SECRET }} \
+    #       --tenant ${{ secrets.AZURE_TENANT_ID }}
+
+    # - name: Configure kubectl for AKS
+    #   run: |
+    #     az aks get-credentials \
+    #       --resource-group ${{ env.RESOURCE_GROUP }} \
+    #       --name ${{ env.CLUSTER_NAME }} \
+    #       --overwrite-existing
+
+    # - name: Test workflow configuration
+    #   run: |
+    #     echo "🧪 Testing GitHub Actions workflow..."
+    #     echo "Environment: ${{ github.event.inputs.environment }}"
+    #     echo "Version: ${{ github.event.inputs.version }}"
+    #     echo "Namespace: ${{ env.NAMESPACE }}"
+    #     echo "Cluster: ${{ env.CLUSTER_NAME }}"
+    #     echo "Resource Group: ${{ env.RESOURCE_GROUP }}"
+    #     echo "Folder Path: ${{ env.FOLDER_PATH }}"
+    #     echo "Secret Name: ${{ env.SECRET_NAME }}"
+    #     echo "✅ Workflow configuration test completed!"
+
+    # - name: Apply Kubernetes deployment
+    #   run: |
+    #     cd ${{ env.FOLDER_PATH }}
+    #     
+    #     # Apply the deployment
+    #     kubectl apply -f deployment.yml
+    #     
+    #     # Wait for rollout to complete
+    #     kubectl rollout status deployment/platform -n ${{ env.NAMESPACE }} --timeout=300s
+    #     
+    #     # Show deployment status
+    #     kubectl get pods -n ${{ env.NAMESPACE }} -l app=platform
+
+    # - name: Verify deployment
+    #   run: |
+    #     # Get the current image version to verify update
+    #     CURRENT_IMAGE=$(kubectl get deployment platform -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[0].image}')
+    #     echo "Current deployed image: $CURRENT_IMAGE"
+    #     
+    #     # Check if the deployment is ready
+    #     kubectl get deployment platform -n ${{ env.NAMESPACE }}
+
+    - name: Commit updated deployment file
+      run: |
+        cd ${{ env.FOLDER_PATH }}
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add deployment.yml
+        git commit -m "Update ${{ github.event.inputs.environment }} deployment to version ${{ github.event.inputs.version }}" || echo "No changes to commit"
+        git push || echo "No changes to push"
