@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform
+  namespace: ai-os-production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: platform
+  template:
+    metadata:
+      labels:
+        app: platform
+    spec:
+      containers:
+        - name: platform
+          image: aiosregistry-akfrawasefd6djbz.azurecr.io/aios-backend:version
+          envFrom:
+            - secretRef:
+                name: production-env
+          ports:
+            - containerPort: 8000
