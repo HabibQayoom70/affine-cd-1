@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: platform
-          image: aiosregistry-akfrawasefd6djbz.azurecr.io/aios-backend:test3
+          image: aiosregistry-akfrawasefd6djbz.azurecr.io/aios-backend:2535ff3
           envFrom:
             - secretRef:
                 name: production-env
