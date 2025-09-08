@@ -13,7 +13,7 @@ on:
         type: choice
         options:
           - staging
-          - production
+          - Production
 
 env:
   AZURE_REGISTRY: aiosregistry-akfrawasefd6djbz.azurecr.io
