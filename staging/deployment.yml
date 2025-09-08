@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: platform
-  namespace: ai-os-production
+  namespace: ai-os-staging
 spec:
   replicas: 3
   selector:
@@ -15,9 +15,9 @@ spec:
     spec:
       containers:
         - name: platform
-          image: aiosregistry-akfrawasefd6djbz.azurecr.io/aios-backend:version
+          image: aiosregistry-akfrawasefd6djbz.azurecr.io/aios-backend:2535ff3
           envFrom:
             - secretRef:
-                name: production-env
+                name: staging-env
           ports:
             - containerPort: 8000
